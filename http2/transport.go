@@ -2440,10 +2440,17 @@ func (b transportResponseBody) Read(p []byte) (n int, err error) {
 	var connAdd, streamAdd int32
 
 	// Check the conn-level first, before the stream-level.
-	// Use dynamic connFlow logic
-	if v := cc.inflow.available(); v < int32(cc.connFlow/2) {
-		connAdd = int32(cc.connFlow) - v
-		cc.inflow.add(connAdd)
+	// When connFlow=0 (no initial WINDOW_UPDATE, e.g. Chrome 152+), use the
+	// stream-level window as the reactive refill target so data keeps flowing.
+	connTarget := cc.connFlow
+	if connTarget == 0 {
+		connTarget = cc.streamFlow
+	}
+	if connTarget > 0 {
+		if v := cc.inflow.available(); v < int32(connTarget/2) {
+			connAdd = int32(connTarget) - v
+			cc.inflow.add(connAdd)
+		}
 	}
 
 	if err == nil {
