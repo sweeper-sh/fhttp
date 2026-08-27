@@ -781,11 +781,11 @@ func (t *Transport) newClientConn(c net.Conn, addr string, singleUse bool) (*Cli
 		cc.streamFlow = v
 	}
 
-	// 2. Determine Connection Flow (default to ~15MB if not set)
-	cc.connFlow = transportDefaultConnFlow
-	if t.ConnectionFlow != 0 {
-		cc.connFlow = t.ConnectionFlow
-	}
+	// 2. Determine Connection Flow.
+	// ConnectionFlow=0 means no WINDOW_UPDATE frame (Chrome 152+ omits it).
+	// A non-zero value is sent as-is; the old default (transportDefaultConnFlow)
+	// is NOT applied — callers (tls-client profiles) always set an explicit value.
+	cc.connFlow = t.ConnectionFlow
 
 	// ------------------------------------------------------------------
 	// SAFETY: Validate flow control values don't exceed int32 max
@@ -861,11 +861,7 @@ func (t *Transport) newClientConn(c net.Conn, addr string, singleUse bool) (*Cli
 	cc.bw.Write(clientPreface)
 	cc.fr.WriteSettings(initialSettings...)
 
-	// ------------------------------------------------------------------
-	// CRITICAL FIX: Use the sanitized cc.connFlow.
-	// t.ConnectionFlow might be 0, which would send an illegal Window Update of 0.
-	// cc.connFlow is guaranteed to be non-zero (defaults to transportDefaultConnFlow).
-	// ------------------------------------------------------------------
+	// ConnectionFlow=0 → no WINDOW_UPDATE (Chrome 152+).
 	if cc.connFlow > 0 {
 		cc.fr.WriteWindowUpdate(0, cc.connFlow)
 	}
